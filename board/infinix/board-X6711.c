@@ -5,6 +5,9 @@
 
 #include <board_ops.h>
 
+#define VOLUME_DOWN 17
+#define VOLUME_UP 18
+
 void board_early_init(void) {
     printf("Entering early init for Infinix Note 30 5G\n");
 }
@@ -13,6 +16,17 @@ void board_late_init(void) {
     printf("Entering late init for Infinix Note 30 5G\n");
 
     uint32_t addr = 0;
+
+    // Patch to enable:
+    // - Volume Down → Fastboot
+    // - Volume Up → Recovery
+    if (mtk_detect_key(VOLUME_DOWN)) {
+        set_bootmode(BOOTMODE_FASTBOOT);
+        show_bootmode(BOOTMODE_FASTBOOT);
+    } else if (mtk_detect_key(VOLUME_UP)) {
+        set_bootmode(BOOTMODE_RECOVERY);
+        show_bootmode(BOOTMODE_RECOVERY);
+    }
 
     // Suppresses the bootloader unlock warning shown during boot on
     // unlocked devices. In addition to the visual warning, it also
