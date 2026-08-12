@@ -158,6 +158,34 @@ static void cmdline_append(const char *arg) {
         npf_snprintf(cl + len, 0x400 - len, " %s", arg);
 }
 
+static void strip_boot_signature(void *data, unsigned sz) {
+    const boot_img_hdr *hdr = data;
+
+    if (!data || sz < BOOTIMG_HDR_SZ ||
+        memcmp(hdr->magic, BOOTIMG_MAGIC, BOOTIMG_MAGIC_SZ) != 0)
+        return;
+
+    uint32_t page = hdr->page_size;
+    if (!page)
+        return;
+
+    uint32_t pages = 1; // header
+    pages += (hdr->kernel_size  + page - 1) / page;
+    pages += (hdr->ramdisk_size + page - 1) / page;
+    pages += (hdr->second_size  + page - 1) / page;
+    if (hdr->header_version >= BOOT_HEADER_VERSION_ONE)
+        pages += (hdr->recovery_dtbo_size + page - 1) / page;
+    if (hdr->header_version >= BOOT_HEADER_VERSION_TWO)
+        pages += (hdr->dtb_size + page - 1) / page;
+
+    uint32_t image = pages * page;
+    if (image < sz) {
+        printf("Stripping %u trailing bytes (signature) from boot image\n",
+               sz - image);
+        memset((uint8_t *)data + image, 0, sz - image);
+    }
+}
+
 static void cmd_flash_wrapper(const char *arg, void *data, unsigned sz) {
     const char *part = arg;
     advance_partition_name(&part);
@@ -168,6 +196,13 @@ static void cmd_flash_wrapper(const char *arg, void *data, unsigned sz) {
     } else if (is_partition_protected(part, false)) {
         critical_op_fail("You are attempting to flash to a critical partition.");
         return;
+    }
+
+    if (strcmp(part, "boot") == 0) {
+        // Amazon appends an ASN.1 signature after the boot image. FireOS treats a
+        // signed boot as stock and restores its own recovery over TWRP, so wipe
+        // everything past the real image before flashing...
+        strip_boot_signature(data, sz);
     }
 
     cmd_flash(arg, data, sz);
