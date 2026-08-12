@@ -143,6 +143,12 @@ menu "Device Support"
         help
           Say Y if you want to include support for Infinix HOT 20 5G
 
+    config INFINIX_X6711
+        bool "Support Infinix Note 30 5G"
+        default n
+        help
+          Say Y if you want to include support for Infinix Note 30 5G
+
     config RABBIT_R1
         bool "Support Rabbit R1"
         default n

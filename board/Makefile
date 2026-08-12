@@ -26,6 +26,7 @@ lib-$(CONFIG_HUAWEI_KOBE2LTE) += huawei/board-kobe2lte.o
 lib-$(CONFIG_HUAWEI_KOBE2WIFI) += huawei/board-kobe2wifi.o
 lib-$(CONFIG_BQ_AQUARIS_M8) += bq/board-aquaris_m8.o
 lib-$(CONFIG_INFINIX_X666) += infinix/board-X666.o
+lib-$(CONFIG_INFINIX_X6711) += infinix/board-X6711.o
 lib-$(CONFIG_RABBIT_R1) += rabbit/board-r1.o
 lib-$(CONFIG_OPPO_LEADE) += oppo/board-leade.o
 lib-$(CONFIG_VOLLA_MIMAMEID) += volla/board-mimameid.o
