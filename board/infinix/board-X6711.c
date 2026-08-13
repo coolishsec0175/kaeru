@@ -46,7 +46,7 @@ void board_late_init(void) {
     // state warnings, visual only, with no real impact.
     //
     // Same approach: patch the function to always return 0.
-    addr = SEARCH_PATTERN(LK_START, LK_END, 0xB530, 0xB083, 0xAB02);
+    addr = SEARCH_PATTERN(LK_START, LK_END, 0xB530, 0xB083, 0xAB02, 0x2200);
     if (addr) {
         printf("Found dm_verity_corruption at 0x%08X\n", addr);
         FORCE_RETURN(addr, 0);
