@@ -159,6 +159,50 @@ void board_early_init(void) {
 
     uint32_t addr = 0;
 
+    // Regardless of whether spoofing is enabled, we always need to
+    // disable image authentication. The user may just be using this
+    // custom LK to unlock their device, or they may be spoofing
+    // where the locked state would enforce verification.
+    //
+    // Forcing get_vfy_policy to return 0 skips certificate
+    // verification for all partitions and firmware images (boot,
+    // recovery, dtbo, SCP, etc.) so the device can boot with
+    // modified or unsigned images.
+    addr = SEARCH_PATTERN(LK_START, LK_END,
+                          0xB508, 0xF7FF, 0xFF5F, 0xF3C0, 0x0040, 0xBD08);
+    if (addr) {
+        printf("Found get_vfy_policy at 0x%08X\n", addr);
+        FORCE_RETURN(addr, 0);
+    }
+
+    // Since we're spoofing the LKS_STATE as locked, get_dl_policy would
+    // normally restrict fastboot downloads/flashing based on security
+    // policy. Force it to return 0 to bypass these restrictions and
+    // allow unrestricted flashing.
+    addr = SEARCH_PATTERN(LK_START, LK_END,
+                          0xB508, 0xF7FF, 0xFF59, 0xF000, 0x0001, 0xBD08);
+    if (addr) {
+        printf("Found get_dl_policy at 0x%08X\n", addr);
+        FORCE_RETURN(addr, 0);
+    }
+
+    // Since we report the device as locked, AVB treats a bad signature,
+    // hash mismatch, rollback or rejected key as fatal and won't boot
+    // modified or resigned images. Force it into "allow verification
+    // error" mode, the same path AVB uses when unlocked, so it tolerates
+    // any vbmeta and still builds slot_data and the kernel cmdline.
+    //
+    // This LK has a slightly different instruction ordering than the
+    // reference (str r3,[sp,#0x34] comes before eor sl,r3,#1), so we
+    // use the ordering present in this image.
+    addr = SEARCH_PATTERN(LK_START, LK_END,
+                          0xF005, 0x0301, 0x930D, 0xF083, 0x0A01, 0x9B70);
+    if (addr) {
+        printf("Found avb_slot_verify allow-error gate at 0x%08X\n", addr);
+        // and r3, r5, #1  ->  mov.w r3, #1
+        PATCH_MEM(addr, 0xF04F, 0x0301);
+    }
+
     // The environment area isn't initialized yet when board_early_init
     // runs, so any get_env calls would return NULL at this stage. We
     // hook a printf call in platform_init that runs right after env
