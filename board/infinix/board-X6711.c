@@ -10,6 +10,45 @@
 
 #define KAERU_BANNER "kaeru for Infinix Note 30 5G (X6711)"
 
+static void spoof_lock_state(void) {
+    uint32_t addr = 0;
+
+    int spoofing = is_spoofing_enabled();
+    fastboot_publish("is-spoofing", spoofing ? "1" : "0");
+
+    if (!spoofing) {
+        printf("Bootloader lock status spoofing disabled.\n");
+        return;
+    }
+
+    printf("Bootloader lock status spoofing enabled, applying patches.\n");
+
+    // Make seccfg_get_lock_state always report lock_state=1 and return 2,
+    // so the TEE and system see the bootloader as "locked".
+    addr = SEARCH_PATTERN(LK_START, LK_END, 0xB1D0, 0xB510, 0x4604, 0xF7FF, 0xFFDD);
+    if (addr) {
+        printf("Found seccfg_get_lock_state at 0x%08X\n", addr);
+        PATCH_MEM(addr + 6,
+            0x2301,  // movs r3, #1
+            0x6023,  // str r3, [r4, #0]
+            0x2002,  // movs r0, #2
+            0xBD10   // pop {r4, pc}
+        );
+    }
+
+    // Force the secure boot state to ATTR_SBOOT_ENABLE (0x11).
+    addr = SEARCH_PATTERN(LK_START, LK_END, 0xB510, 0x4604, 0x2001, 0xF7FF);
+    if (addr) {
+        printf("Found get_sboot_state at 0x%08X\n", addr);
+        PATCH_MEM(addr,
+            0x2311,  // movs r3, #0x11
+            0x6003,  // str r3, [r0, #0]
+            0x2000,  // movs r0, #0
+            0x4770   // bx lr
+        );
+    }
+}
+
 static void cmd_banner(const char* arg, void* data, unsigned sz) {
     fastboot_info(KAERU_BANNER);
     fastboot_info("Custom commands:");
@@ -118,12 +157,17 @@ void board_early_init(void) {
     fastboot_register("oem getmode", cmd_getmode, 1);
     fastboot_register("oem keytest", cmd_keytest, 1);
     fastboot_register("oem bootmode", cmd_bootmode, 1);
+    fastboot_register("oem bldr_spoof", cmd_spoof_bootloader_lock, 1);
 }
 
 void board_late_init(void) {
     printf("Entering late init for Infinix Note 30 5G\n");
 
     uint32_t addr = 0;
+
+    // Environment is initialized by the time we get here, so we can apply
+    // the bootloader lock state spoofing patches directly.
+    spoof_lock_state();
 
     // Patch to enable:
     // - Volume Down → Fastboot
