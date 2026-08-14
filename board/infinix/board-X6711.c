@@ -130,9 +130,13 @@ static void cmd_bootmode(const char* arg, void* data, unsigned sz) {
     }
 
     if (ISDIGIT(*arg)) {
-        char* end = NULL;
-        unsigned long val = strtoul(arg, &end, 0);
-        if (end && (*end == '\0' || *end == ' ')) {
+        const char* p = arg;
+        unsigned long val = 0;
+        while (ISDIGIT(*p)) {
+            val = val * 10 + (unsigned long)(*p - '0');
+            p++;
+        }
+        if (*p == '\0' || *p == ' ') {
             mode = (bootmode_t)val;
             set_bootmode(mode);
             npf_snprintf(msg, sizeof(msg), "bootmode set to %s (%d)",
