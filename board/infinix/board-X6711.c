@@ -157,6 +157,21 @@ static void cmd_bootmode(const char* arg, void* data, unsigned sz) {
 void board_early_init(void) {
     printf("Entering early init for Infinix Note 30 5G\n");
 
+    uint32_t addr = 0;
+
+    // The environment area isn't initialized yet when board_early_init
+    // runs, so any get_env calls would return NULL at this stage. We
+    // hook a printf call in platform_init that runs right after env
+    // initialization completes ([PROFILE] ::: ... "ENV init" ...). It's
+    // a convenient entry point since the call itself is non-essential
+    // and we need the env to be ready before applying our lock state
+    // patches.
+    addr = SEARCH_PATTERN(LK_START, LK_END, 0xF03A, 0xF9CC, 0x6823, 0x2000);
+    if (addr) {
+        printf("Found env_init_done at 0x%08X\n", addr);
+        PATCH_CALL(addr, (void *)spoof_lock_state, TARGET_THUMB);
+    }
+
     fastboot_register("oem banner", cmd_banner, 1);
     fastboot_register("oem getmode", cmd_getmode, 1);
     fastboot_register("oem keytest", cmd_keytest, 1);
@@ -169,12 +184,10 @@ void board_late_init(void) {
 
     uint32_t addr = 0;
 
-    // NOTE: spoof_lock_state() is intentionally NOT called here. The
-    // environment area is not yet initialized at this stage on the MT6833,
-    // so get_env() would crash the boot (black screen). The reference
-    // boards hook it into an env_init_done printf instead; until that
-    // hook point is located on this image, the spoof patches stay off.
-    // (oem bldr_spoof command remains registered for fastboot use.)
+    // NOTE: spoof_lock_state() is NOT called here — it runs too early for
+    // get_env() (env not initialized yet on MT6833). Instead it's hooked
+    // into the env_init_done printf inside platform_init (see
+    // board_early_init).
 
     // Patch to enable:
     // - Volume Down → Fastboot
