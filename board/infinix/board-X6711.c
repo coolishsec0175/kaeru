@@ -5,11 +5,6 @@
 
 #include <board_ops.h>
 
-#define VOLUME_DOWN 17
-#define VOLUME_UP 18
-
-#define KAERU_BANNER "kaeru for Infinix Note 30 5G (X6711)"
-
 static void spoof_lock_state(void) {
     uint32_t addr = 0;
 
@@ -47,111 +42,6 @@ static void spoof_lock_state(void) {
             0x4770   // bx lr
         );
     }
-}
-
-static void cmd_banner(const char* arg, void* data, unsigned sz) {
-    fastboot_info(KAERU_BANNER);
-    fastboot_info("Custom commands:");
-    fastboot_info("  oem banner            - show this info");
-    fastboot_info("  oem getmode           - show current boot mode");
-    fastboot_info("  oem keytest           - report held volume key");
-    fastboot_info("  oem bootmode <mode>   - set boot mode for next boot");
-    fastboot_okay("");
-}
-
-static void cmd_getmode(const char* arg, void* data, unsigned sz) {
-    char msg[64];
-    npf_snprintf(msg, sizeof(msg), "bootmode=%s (%d)",
-                 bootmode2str(get_bootmode()), get_bootmode());
-    fastboot_info(msg);
-    fastboot_okay("");
-}
-
-static void cmd_keytest(const char* arg, void* data, unsigned sz) {
-    if (mtk_detect_key(VOLUME_DOWN)) {
-        fastboot_info("volume_down=held");
-        fastboot_okay("");
-        return;
-    }
-
-    if (mtk_detect_key(VOLUME_UP)) {
-        fastboot_info("volume_up=held");
-        fastboot_okay("");
-        return;
-    }
-
-    fastboot_info("volume_down=released");
-    fastboot_info("volume_up=released");
-    fastboot_okay("");
-}
-
-static int bootmode_by_name(const char* name, bootmode_t* mode) {
-    static const struct {
-        const char* name;
-        bootmode_t mode;
-    } modes[] = {
-        { "normal", BOOTMODE_NORMAL },
-        { "meta", BOOTMODE_META },
-        { "recovery", BOOTMODE_RECOVERY },
-        { "factory", BOOTMODE_FACTORY },
-        { "advmeta", BOOTMODE_ADVMETA },
-        { "atefact", BOOTMODE_ATEFACT },
-        { "alarm", BOOTMODE_ALARM },
-        { "poweroff-charging", BOOTMODE_POWEROFF_CHARGING },
-        { "fastboot", BOOTMODE_FASTBOOT },
-        { "erecovery", BOOTMODE_ERECOVERY },
-        { "laf", BOOTMODE_LAF },
-    };
-
-    for (size_t i = 0; i < ARRAY_SIZE(modes); i++) {
-        if (streq(name, modes[i].name)) {
-            *mode = modes[i].mode;
-            return 0;
-        }
-    }
-
-    return -1;
-}
-
-static void cmd_bootmode(const char* arg, void* data, unsigned sz) {
-    while (*arg == ' ') arg++;
-
-    bootmode_t mode;
-    char msg[64];
-
-    if (bootmode_by_name(arg, &mode) == 0) {
-        set_bootmode(mode);
-        npf_snprintf(msg, sizeof(msg), "bootmode set to %s (%d)",
-                     bootmode2str(mode), mode);
-        fastboot_info(msg);
-        fastboot_info("Reboot for it to take effect.");
-        fastboot_okay("");
-        return;
-    }
-
-    if (ISDIGIT(*arg)) {
-        const char* p = arg;
-        unsigned long val = 0;
-        while (ISDIGIT(*p)) {
-            val = val * 10 + (unsigned long)(*p - '0');
-            p++;
-        }
-        if (*p == '\0' || *p == ' ') {
-            mode = (bootmode_t)val;
-            set_bootmode(mode);
-            npf_snprintf(msg, sizeof(msg), "bootmode set to %s (%d)",
-                         bootmode2str(mode), mode);
-            fastboot_info(msg);
-            fastboot_info("Reboot for it to take effect.");
-            fastboot_okay("");
-            return;
-        }
-    }
-
-    fastboot_info("Valid modes: normal meta recovery factory advmeta atefact");
-    fastboot_info("             alarm poweroff-charging fastboot erecovery laf");
-    fastboot_info("Or use a numeric value, e.g. 99 = fastboot, 2 = recovery");
-    fastboot_fail("Usage: fastboot oem bootmode <mode>");
 }
 
 void board_early_init(void) {
@@ -216,10 +106,6 @@ void board_early_init(void) {
         PATCH_CALL(addr, (void *)spoof_lock_state, TARGET_THUMB);
     }
 
-    fastboot_register("oem banner", cmd_banner, 1);
-    fastboot_register("oem getmode", cmd_getmode, 1);
-    fastboot_register("oem keytest", cmd_keytest, 1);
-    fastboot_register("oem bootmode", cmd_bootmode, 1);
     fastboot_register("oem bldr_spoof", cmd_spoof_bootloader_lock, 1);
 }
 
@@ -232,17 +118,6 @@ void board_late_init(void) {
     // get_env() (env not initialized yet on MT6833). Instead it's hooked
     // into the env_init_done printf inside platform_init (see
     // board_early_init).
-
-    // Patch to enable:
-    // - Volume Down → Fastboot
-    // - Volume Up → Recovery
-    if (mtk_detect_key(VOLUME_DOWN)) {
-        set_bootmode(BOOTMODE_FASTBOOT);
-        show_bootmode(BOOTMODE_FASTBOOT);
-    } else if (mtk_detect_key(VOLUME_UP)) {
-        set_bootmode(BOOTMODE_RECOVERY);
-        show_bootmode(BOOTMODE_RECOVERY);
-    }
 
     // Suppresses the bootloader unlock warning shown during boot on
     // unlocked devices. In addition to the visual warning, it also
