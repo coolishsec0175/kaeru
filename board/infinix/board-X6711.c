@@ -20,6 +20,10 @@ static void spoof_lock_state(void) {
 
     // Make seccfg_get_lock_state always report lock_state=1 and return 2,
     // so the TEE and system see the bootloader as "locked".
+    //
+    // NOTE: get_sboot_state is intentionally NOT patched. The merlin
+    // reference (same MT6833 SoC) does not patch it, and forcing
+    // ATTR_SBOOT_ENABLE (0x11) here caused a black screen during boot.
     addr = SEARCH_PATTERN(LK_START, LK_END, 0xB1D0, 0xB510, 0x4604, 0xF7FF, 0xFFDD);
     if (addr) {
         printf("Found seccfg_get_lock_state at 0x%08X\n", addr);
@@ -28,18 +32,6 @@ static void spoof_lock_state(void) {
             0x6023,  // str r3, [r4, #0]
             0x2002,  // movs r0, #2
             0xBD10   // pop {r4, pc}
-        );
-    }
-
-    // Force the secure boot state to ATTR_SBOOT_ENABLE (0x11).
-    addr = SEARCH_PATTERN(LK_START, LK_END, 0xB510, 0x4604, 0x2001, 0xF7FF);
-    if (addr) {
-        printf("Found get_sboot_state at 0x%08X\n", addr);
-        PATCH_MEM(addr,
-            0x2311,  // movs r3, #0x11
-            0x6003,  // str r3, [r0, #0]
-            0x2000,  // movs r0, #0
-            0x4770   // bx lr
         );
     }
 }
