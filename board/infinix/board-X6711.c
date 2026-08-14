@@ -169,9 +169,12 @@ void board_late_init(void) {
 
     uint32_t addr = 0;
 
-    // Environment is initialized by the time we get here, so we can apply
-    // the bootloader lock state spoofing patches directly.
-    spoof_lock_state();
+    // NOTE: spoof_lock_state() is intentionally NOT called here. The
+    // environment area is not yet initialized at this stage on the MT6833,
+    // so get_env() would crash the boot (black screen). The reference
+    // boards hook it into an env_init_done printf instead; until that
+    // hook point is located on this image, the spoof patches stay off.
+    // (oem bldr_spoof command remains registered for fastboot use.)
 
     // Patch to enable:
     // - Volume Down → Fastboot
