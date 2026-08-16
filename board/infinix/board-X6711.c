@@ -9,7 +9,14 @@ static void spoof_lock_state(void) {
     uint32_t addr = 0;
 
     int spoofing = is_spoofing_enabled();
-    fastboot_publish("is-spoofing", spoofing ? "1" : "0");
+
+    // NOTE: fastboot_publish() is deliberately NOT called here. On this
+    // MT6833 image the fastboot vars list head (0x4831BDE0, BSS) is not
+    // initialized during a normal boot (the fastboot subsystem only starts
+    // in download mode), so publishing dereferences an uninit global and
+    // crashes (black screen). The seccfg spoof patch below doesn't need it,
+    // and "is-spoofing" is already published lazily by the oem bldr_spoof
+    // cmd handler when toggling from fastboot.
 
     if (!spoofing) {
         printf("Bootloader lock status spoofing disabled.\n");
