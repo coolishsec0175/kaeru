@@ -5,25 +5,16 @@
 
 #include <board_ops.h>
 
-static void spoof_lock_state(void) {
+void board_early_init(void) {
+    printf("Entering early init for Infinix Note 30 5G\n");
+
     uint32_t addr = 0;
 
-    int spoofing = is_spoofing_enabled();
-
-    // NOTE: fastboot_publish() is deliberately NOT called here. On this
-    // MT6833 image the fastboot vars list head (0x4831BDE0, BSS) is not
-    // initialized during a normal boot (the fastboot subsystem only starts
-    // in download mode), so publishing dereferences an uninit global and
-    // crashes (black screen). The seccfg spoof patch below doesn't need it,
-    // and "is-spoofing" is already published lazily by the oem bldr_spoof
-    // cmd handler when toggling from fastboot.
-
-    if (!spoofing) {
-        printf("Bootloader lock status spoofing disabled.\n");
-        return;
-    }
-
-    printf("Bootloader lock status spoofing enabled, applying patches.\n");
+    // The environment area is not initialized yet when board_early_init
+    // runs, so get_env() / fastboot_publish() are NOT safe to call here
+    // (they crashed the boot with a black screen on this MT6833 image).
+    // Following the X6739 reference, we apply every patch unconditionally
+    // instead of gating it behind an env flag.
 
     // Make seccfg_get_lock_state always report lock_state=1 and return 2,
     // so the TEE and system see the bootloader as "locked".
@@ -41,12 +32,6 @@ static void spoof_lock_state(void) {
             0xBD10   // pop {r4, pc}
         );
     }
-}
-
-void board_early_init(void) {
-    printf("Entering early init for Infinix Note 30 5G\n");
-
-    uint32_t addr = 0;
 
     // Regardless of whether spoofing is enabled, we always need to
     // disable image authentication. The user may just be using this
@@ -92,19 +77,6 @@ void board_early_init(void) {
         PATCH_MEM(addr, 0xF04F, 0x0301);
     }
 
-    // The environment area isn't initialized yet when board_early_init
-    // runs, so any get_env calls would return NULL at this stage. We
-    // hook a printf call in platform_init that runs right after env
-    // initialization completes ([PROFILE] ::: ... "ENV init" ...). It's
-    // a convenient entry point since the call itself is non-essential
-    // and we need the env to be ready before applying our lock state
-    // patches.
-    addr = SEARCH_PATTERN(LK_START, LK_END, 0xF03A, 0xF9CC, 0x6823, 0x2000);
-    if (addr) {
-        printf("Found env_init_done at 0x%08X\n", addr);
-        PATCH_CALL(addr, (void *)spoof_lock_state, TARGET_THUMB);
-    }
-
     fastboot_register("oem bldr_spoof", cmd_spoof_bootloader_lock, 1);
 }
 
@@ -112,11 +84,6 @@ void board_late_init(void) {
     printf("Entering late init for Infinix Note 30 5G\n");
 
     uint32_t addr = 0;
-
-    // NOTE: spoof_lock_state() is NOT called here — it runs too early for
-    // get_env() (env not initialized yet on MT6833). Instead it's hooked
-    // into the env_init_done printf inside platform_init (see
-    // board_early_init).
 
     // Suppresses the bootloader unlock warning shown during boot on
     // unlocked devices. In addition to the visual warning, it also
