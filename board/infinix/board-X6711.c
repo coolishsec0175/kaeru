@@ -77,6 +77,33 @@ void board_early_init(void) {
         PATCH_MEM(addr, 0xF04F, 0x0301);
     }
 
+    // When the device reports as locked, AVB verifies vbmeta public
+    // keys in two places inside load_and_verify_vbmeta: once for the
+    // main vbmeta image and once for chained vbmeta images. Both reject
+    // the boot if the key doesn't match, causing the "Public key used to
+    // sign data rejected" error and a boot loop. Patch both checks so
+    // any key is accepted regardless, as the LXX503 reference does.
+    addr = SEARCH_PATTERN(LK_START, LK_END, 0xF47F, 0xAE71, 0xE68D, 0xF8DD);
+    if (addr) {
+        printf("Found load_and_verify_vbmeta at 0x%08X\n", addr);
+
+        // The chain key check first compares key lengths before calling
+        // memcmp. If lengths differ, it skips memcmp and falls straight
+        // to the error path. Change "cmp r2, r3" to "cmp r3, r3" so the
+        // length check always succeeds, allowing execution to reach the
+        // memcmp path (which we NOP below).
+        PATCH_MEM(addr - 0x320, 0x451B);
+
+        // NOP the bne.w that rejects mismatched chained vbmeta keys,
+        // falling through to the success path unconditionally.
+        NOP(addr, 2);
+
+        // Replace "cmp r3, #0" with "movs r3, #1" so key_is_trusted
+        // is always nonzero and the following bne.w takes the success
+        // branch.
+        PATCH_MEM(addr + 0x70, 0x2301);
+    }
+
     fastboot_register("oem bldr_spoof", cmd_spoof_bootloader_lock, 1);
 }
 
