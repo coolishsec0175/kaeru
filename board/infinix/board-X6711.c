@@ -5,23 +5,17 @@
 
 #include <board_ops.h>
 
-void board_early_init(void) {
-    printf("Entering early init for Infinix Note 30 5G\n");
-
+void spoof_lock_state(void) {
     uint32_t addr = 0;
 
-    // The environment area is not initialized yet when board_early_init
-    // runs, so get_env() / fastboot_publish() are NOT safe to call here
-    // (they crashed the boot with a black screen on this MT6833 image).
-    // Following the X6739 reference, we apply every patch unconditionally
-    // instead of gating it behind an env flag.
-
-    // Make seccfg_get_lock_state always report lock_state=1 and return 2,
-    // so the TEE and system see the bootloader as "locked".
-    //
-    // NOTE: get_sboot_state is intentionally NOT patched. The merlin
-    // reference (same MT6833 SoC) does not patch it, and forcing
-    // ATTR_SBOOT_ENABLE (0x11) here caused a black screen during boot.
+    // Apply the seccfg_get_lock_state patch only when spoofing is enabled.
+    // is_spoofing_enabled() reads the KAERU_ENV_BLDR_SPOOF env var via
+    // get_env(), which is safe here because we are hooked at env_init_done.
+    if (!is_spoofing_enabled()) {
+        printf("spoof disabled\n");
+        return;
+    }
+    printf("spoof enabled, applying seccfg patch\n");
     addr = SEARCH_PATTERN(LK_START, LK_END, 0xB1D0, 0xB510, 0x4604, 0xF7FF, 0xFFDD);
     if (addr) {
         printf("Found seccfg_get_lock_state at 0x%08X\n", addr);
@@ -32,6 +26,12 @@ void board_early_init(void) {
             0xBD10   // pop {r4, pc}
         );
     }
+}
+
+void board_early_init(void) {
+    printf("Entering early init for Infinix Note 30 5G\n");
+
+    uint32_t addr = 0;
 
     // Regardless of whether spoofing is enabled, we always need to
     // disable image authentication. The user may just be using this
@@ -105,6 +105,14 @@ void board_early_init(void) {
     }
 
     fastboot_register("oem bldr_spoof", cmd_spoof_bootloader_lock, 1);
+
+    // Hook into env_init_done after environment initialization so
+    // is_spoofing_enabled() (via get_env) is safe to call.
+    addr = SEARCH_PATTERN(LK_START, LK_END, 0xF03A, 0xF9CC, 0x6823, 0x2000);
+    if (addr) {
+        printf("Found env_init_done at 0x%08X\n", addr);
+        PATCH_CALL(addr, (void *)spoof_lock_state, TARGET_THUMB);
+    }
 }
 
 void board_late_init(void) {
